@@ -1,0 +1,687 @@
+// Prisma schema for Teisės Draugas - Lithuanian Legal AI Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  emailVerified     DateTime?
+  passwordHash      String?
+  name              String?
+  personalCode      String?   @unique // Lithuanian personal identification code (asmens kodas)
+  phone             String?
+  image             String?
+  preferredLanguage String    @default("lt") // "lt" or "en"
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  cases         Case[]
+  documents     Document[]
+  notifications Notification[]
+  lawyerReviews LawyerReview[] @relation("LawyerReviews")
+  reviewsAsLawyer LawyerReview[] @relation("ReviewsAsLawyer")
+
+  // User roles
+  role UserRole @default(USER)
+
+  @@map("users")
+}
+
+enum UserRole {
+  USER
+  LAWYER    // Partner lawyers for human review
+  ADMIN
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String  // "credentials", "smart-id", "mobile-id"
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================
+// CASE MANAGEMENT
+// ============================================
+
+model Case {
+  id          String     @id @default(cuid())
+  userId      String
+  caseNumber  String     @unique @default(cuid()) // Human-readable case number
+  title       String
+  description String     @db.Text
+
+  // Case classification
+  caseType    CaseType
+  category    CaseCategory
+  claimAmount Decimal    @db.Decimal(10, 2) // Amount in EUR
+
+  // Case status and progress
+  status      CaseStatus @default(INTAKE)
+  currentStep CaseStep   @default(ANALYSIS)
+
+  // AI Assessment results
+  winProbability    Float?   // 0.0 to 1.0
+  legalBasis        String?  @db.Text // JSON array of applicable laws
+  riskAssessment    String?  @db.Text // JSON object with risk factors
+  recommendedAction String?  @db.Text
+
+  // Opponent information
+  opponentName      String?
+  opponentEmail     String?
+  opponentPhone     String?
+  opponentAddress   String?  @db.Text
+  opponentType      OpponentType?
+
+  // Dates and deadlines
+  incidentDate      DateTime?
+  deadlineDate      DateTime? // Statute of limitations
+  responseDeadline  DateTime? // Deadline for opponent response
+
+  // Court information (if filed)
+  courtName         String?
+  courtCaseNumber   String?
+  filingDate        DateTime?
+  hearingDate       DateTime?
+
+  // Timestamps
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  resolvedAt  DateTime?
+
+  // Relations
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents     Document[]
+  communications Communication[]
+  timelineEvents TimelineEvent[]
+  demandLetters DemandLetter[]
+  courtFilings  CourtFiling[]
+  negotiations  Negotiation[]
+  lawyerReviews LawyerReview[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([caseType])
+  @@map("cases")
+}
+
+enum CaseType {
+  CONSUMER_DISPUTE      // Vartotojų ginčai
+  RENTAL_DEPOSIT        // Nuomos užstato ginčai
+  UNPAID_INVOICE        // Neapmokėtos sąskaitos
+  CONTRACT_BREACH       // Sutarties pažeidimas
+  PROPERTY_DAMAGE       // Turto žala
+  SERVICE_COMPLAINT     // Paslaugų skundai
+  EMPLOYMENT_DISPUTE    // Darbo ginčai (small claims)
+  OTHER                 // Kita
+}
+
+enum CaseCategory {
+  VINTED               // Vinted platform disputes
+  AIRBNB               // Short-term rental
+  FREELANCE            // Gig economy / freelancer
+  LANDLORD_TENANT      // Traditional rental
+  ONLINE_PURCHASE      // E-commerce
+  LOCAL_SERVICE        // Local service providers
+  OTHER
+}
+
+enum CaseStatus {
+  INTAKE               // Initial data collection
+  ANALYSIS             // AI analyzing the case
+  DEMAND_LETTER        // Preparing/sent demand letter
+  AWAITING_RESPONSE    // Waiting for opponent response
+  NEGOTIATION          // Active negotiation
+  PREPARING_FILING     // Preparing court documents
+  FILED                // Filed with court
+  IN_COURT             // Court proceedings
+  RESOLVED             // Case resolved
+  CLOSED               // Case closed (abandoned/unsuccessful)
+}
+
+enum CaseStep {
+  ANALYSIS             // Case Analysis
+  DEMAND_LETTER        // Demand Letter Phase
+  RESPONSE             // Response/Negotiation
+  COURT_FILING         // Court Filing
+  RESOLUTION           // Final Resolution
+}
+
+enum OpponentType {
+  INDIVIDUAL           // Fizinis asmuo
+  COMPANY              // Juridinis asmuo
+  PLATFORM             // Platform (Vinted, Airbnb, etc.)
+  GOVERNMENT           // Government entity
+}
+
+// ============================================
+// DOCUMENTS & EVIDENCE
+// ============================================
+
+model Document {
+  id          String       @id @default(cuid())
+  userId      String
+  caseId      String?
+
+  // File information
+  fileName    String
+  fileType    String       // MIME type
+  fileSize    Int          // in bytes
+  filePath    String       // S3 path or local path
+
+  // Document classification
+  documentType DocumentType
+  description  String?     @db.Text
+
+  // AI extraction results
+  extractedText String?    @db.Text
+  aiAnalysis    String?    @db.Text // JSON with extracted info
+
+  // Timestamps
+  uploadedAt  DateTime     @default(now())
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  case        Case?        @relation(fields: [caseId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([caseId])
+  @@map("documents")
+}
+
+enum DocumentType {
+  SCREENSHOT           // Chat screenshots (Vinted, WhatsApp, etc.)
+  CONTRACT             // Contracts, agreements
+  INVOICE              // Invoices, receipts
+  CORRESPONDENCE       // Email, letter correspondence
+  PHOTO_EVIDENCE       // Photos of damage, products
+  IDENTITY             // ID documents
+  BANK_STATEMENT       // Payment proof
+  COURT_DOCUMENT       // Court-related documents
+  OTHER
+}
+
+// ============================================
+// COMMUNICATIONS & DEMAND LETTERS
+// ============================================
+
+model Communication {
+  id          String    @id @default(cuid())
+  caseId      String
+
+  // Communication details
+  type        CommunicationType
+  direction   CommunicationDirection
+  subject     String?
+  content     String    @db.Text
+
+  // Delivery information
+  deliveryMethod DeliveryMethod?
+  deliveryStatus DeliveryStatus @default(DRAFT)
+  deliveredAt    DateTime?
+  deliveryRef    String?        // Reference from e-delivery system
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+
+  // Relations
+  case        Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("communications")
+}
+
+enum CommunicationType {
+  DEMAND_LETTER        // Pretenzija
+  RESPONSE             // Response from opponent
+  COUNTER_OFFER        // Counter-offer
+  SETTLEMENT           // Settlement agreement
+  COURT_NOTICE         // Court notification
+  GENERAL              // General correspondence
+}
+
+enum CommunicationDirection {
+  OUTGOING             // From user to opponent
+  INCOMING             // From opponent to user
+  INTERNAL             // Internal notes
+}
+
+enum DeliveryMethod {
+  E_PRISTATYMAS        // Official e-delivery
+  EMAIL                // Regular email
+  REGISTERED_MAIL      // Registered postal mail
+  E_TEISMAS            // Court e-filing system
+}
+
+enum DeliveryStatus {
+  DRAFT
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  READ                 // Confirmed read (e-delivery)
+}
+
+model DemandLetter {
+  id          String    @id @default(cuid())
+  caseId      String
+
+  // Letter content
+  version     Int       @default(1)
+  content     String    @db.Text    // Full letter content
+  legalBasis  String    @db.Text    // JSON array of cited laws
+
+  // Generated document
+  pdfPath     String?               // Path to generated PDF
+
+  // Deadlines
+  responseDeadline DateTime?        // Deadline for response (typically 14 days)
+
+  // AI-generated elements
+  aiSummary   String?   @db.Text
+  aiTone      String?               // "formal", "firm", "final_warning"
+
+  // Status
+  status      DemandLetterStatus @default(DRAFT)
+  approvedAt  DateTime?
+  sentAt      DateTime?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  case        Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("demand_letters")
+}
+
+enum DemandLetterStatus {
+  DRAFT
+  PENDING_REVIEW       // Awaiting human lawyer review
+  APPROVED
+  SENT
+  DELIVERED
+  RESPONSE_RECEIVED
+}
+
+// ============================================
+// NEGOTIATION
+// ============================================
+
+model Negotiation {
+  id          String    @id @default(cuid())
+  caseId      String
+
+  // Negotiation tracking
+  round       Int       @default(1)
+  status      NegotiationStatus @default(ACTIVE)
+
+  // Offers
+  userOffer       Decimal?  @db.Decimal(10, 2)
+  opponentOffer   Decimal?  @db.Decimal(10, 2)
+  agreedAmount    Decimal?  @db.Decimal(10, 2)
+
+  // AI recommendations
+  aiRecommendation String? @db.Text
+  aiStrategy       String? @db.Text
+
+  // Notes
+  notes       String?   @db.Text
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  resolvedAt  DateTime?
+
+  // Relations
+  case        Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("negotiations")
+}
+
+enum NegotiationStatus {
+  ACTIVE
+  USER_ACCEPTED
+  OPPONENT_ACCEPTED
+  SETTLED
+  FAILED
+  ESCALATED           // Moving to court
+}
+
+// ============================================
+// COURT FILING
+// ============================================
+
+model CourtFiling {
+  id          String    @id @default(cuid())
+  caseId      String
+
+  // Filing type
+  filingType  CourtFilingType
+
+  // Generated documents
+  content     String    @db.Text     // Main filing content
+  xmlContent  String?   @db.Text     // LITEKO XML format
+  pdfPath     String?                // Generated PDF
+
+  // Court information
+  courtCode   String?                // Court identifier
+  courtName   String?
+
+  // Filing status
+  status      CourtFilingStatus @default(DRAFT)
+  submittedAt DateTime?
+  acceptedAt  DateTime?
+  rejectionReason String? @db.Text
+
+  // Reference numbers
+  filingRef   String?               // Our reference
+  courtRef    String?               // Court's reference number
+
+  // Court fee
+  courtFee    Decimal?  @db.Decimal(10, 2)
+  feePaid     Boolean   @default(false)
+
+  // Digital signature
+  signedAt    DateTime?
+  signatureMethod String?           // "smart-id", "mobile-id"
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  case        Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("court_filings")
+}
+
+enum CourtFilingType {
+  PAYMENT_ORDER        // Teismo įsakymas (simplified payment order)
+  SMALL_CLAIM          // Mažų sumų ginčas
+  REGULAR_CLAIM        // Ieškinis
+  RESPONSE             // Atsiliepimas
+  APPEAL               // Apeliacinis skundas
+}
+
+enum CourtFilingStatus {
+  DRAFT
+  PENDING_REVIEW
+  READY_TO_SIGN
+  SIGNED
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  PROCESSING
+}
+
+// ============================================
+// TIMELINE & EVENTS
+// ============================================
+
+model TimelineEvent {
+  id          String    @id @default(cuid())
+  caseId      String
+
+  // Event details
+  eventType   TimelineEventType
+  title       String
+  description String?   @db.Text
+
+  // Visual properties
+  icon        String?                // Icon name
+  color       String?                // Color code
+
+  // Associated entities
+  documentId       String?
+  communicationId  String?
+
+  // Timestamps
+  eventDate   DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+
+  // Relations
+  case        Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@index([eventDate])
+  @@map("timeline_events")
+}
+
+enum TimelineEventType {
+  CASE_CREATED
+  DOCUMENT_UPLOADED
+  AI_ANALYSIS_COMPLETE
+  DEMAND_LETTER_SENT
+  DEMAND_LETTER_DELIVERED
+  RESPONSE_RECEIVED
+  NEGOTIATION_STARTED
+  OFFER_MADE
+  OFFER_RECEIVED
+  SETTLEMENT_REACHED
+  COURT_FILING_PREPARED
+  COURT_FILING_SUBMITTED
+  COURT_FILING_ACCEPTED
+  HEARING_SCHEDULED
+  JUDGMENT_RECEIVED
+  CASE_RESOLVED
+  CASE_CLOSED
+  DEADLINE_WARNING
+  LAWYER_REVIEW_REQUESTED
+  LAWYER_REVIEW_COMPLETE
+}
+
+// ============================================
+// LAWYER REVIEW (Human-in-the-Loop)
+// ============================================
+
+model LawyerReview {
+  id          String    @id @default(cuid())
+  caseId      String
+  userId      String    // User who requested review
+  lawyerId    String?   // Assigned lawyer
+
+  // Review request
+  reviewType  ReviewType
+  documentType String?              // What's being reviewed
+  documentContent String? @db.Text  // Content to review
+
+  // Review result
+  status      ReviewStatus @default(PENDING)
+  approved    Boolean?
+  comments    String?   @db.Text
+  corrections String?   @db.Text    // Suggested corrections
+
+  // Pricing
+  fee         Decimal   @db.Decimal(10, 2) @default(20.00)
+  paid        Boolean   @default(false)
+
+  // Timestamps
+  requestedAt DateTime  @default(now())
+  assignedAt  DateTime?
+  completedAt DateTime?
+
+  // Relations
+  case        Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user        User      @relation("LawyerReviews", fields: [userId], references: [id], onDelete: Cascade)
+  lawyer      User?     @relation("ReviewsAsLawyer", fields: [lawyerId], references: [id], onDelete: SetNull)
+
+  @@index([caseId])
+  @@index([lawyerId])
+  @@index([status])
+  @@map("lawyer_reviews")
+}
+
+enum ReviewType {
+  DEMAND_LETTER
+  COURT_FILING
+  SETTLEMENT_AGREEMENT
+  GENERAL_ADVICE
+}
+
+enum ReviewStatus {
+  PENDING
+  ASSIGNED
+  IN_REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id          String    @id @default(cuid())
+  userId      String
+
+  // Notification content
+  type        NotificationType
+  title       String
+  message     String    @db.Text
+
+  // Link to related entity
+  caseId      String?
+  actionUrl   String?
+
+  // Status
+  read        Boolean   @default(false)
+  readAt      DateTime?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  CASE_UPDATE
+  DEADLINE_REMINDER
+  DOCUMENT_RECEIVED
+  RESPONSE_RECEIVED
+  REVIEW_COMPLETE
+  PAYMENT_REQUIRED
+  SYSTEM
+}
+
+// ============================================
+// LEGAL REFERENCES (Lithuanian Civil Code)
+// ============================================
+
+model LegalArticle {
+  id          String    @id @default(cuid())
+
+  // Article identification
+  code        String                // e.g., "CK" for Civil Code
+  book        String?               // Book number
+  chapter     String?               // Chapter
+  articleNumber String              // e.g., "6.228"
+
+  // Content
+  titleLt     String                // Lithuanian title
+  titleEn     String?               // English title
+  contentLt   String    @db.Text    // Full text in Lithuanian
+  contentEn   String?   @db.Text    // English translation
+
+  // Categorization
+  category    String[]              // Tags for search
+  keywords    String[]              // Search keywords
+
+  // Usage statistics
+  usageCount  Int       @default(0)
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([code, articleNumber])
+  @@index([category])
+  @@index([keywords])
+  @@map("legal_articles")
+}
+
+// ============================================
+// AI INTERACTION LOGS (for compliance)
+// ============================================
+
+model AIInteractionLog {
+  id          String    @id @default(cuid())
+  userId      String?
+  caseId      String?
+
+  // Interaction details
+  interactionType String             // "case_analysis", "letter_generation", etc.
+  prompt      String    @db.Text
+  response    String    @db.Text
+
+  // Model information
+  modelUsed   String                 // e.g., "claude-3-opus"
+  tokensUsed  Int?
+
+  // Compliance
+  disclaimerShown Boolean @default(true)
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([caseId])
+  @@index([createdAt])
+  @@map("ai_interaction_logs")
+}

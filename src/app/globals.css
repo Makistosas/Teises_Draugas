@@ -1,0 +1,254 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.5rem;
+
+    /* Lithuanian-themed colors */
+    --lithuania-yellow: 45 98% 53%;
+    --lithuania-green: 160 100% 21%;
+    --lithuania-red: 358 68% 47%;
+
+    /* Legal trust colors */
+    --legal-trust: 221 83% 53%;
+    --legal-success: 160 84% 39%;
+    --legal-warning: 38 92% 50%;
+    --legal-danger: 0 72% 51%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  /* Timeline styles */
+  .timeline-step {
+    @apply relative flex items-center;
+  }
+
+  .timeline-step::before {
+    content: '';
+    @apply absolute left-4 top-10 h-full w-0.5 bg-border;
+  }
+
+  .timeline-step:last-child::before {
+    @apply hidden;
+  }
+
+  .timeline-icon {
+    @apply relative z-10 flex h-8 w-8 items-center justify-center rounded-full;
+  }
+
+  .timeline-icon-active {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .timeline-icon-completed {
+    @apply bg-legal-success text-white;
+  }
+
+  .timeline-icon-pending {
+    @apply bg-muted text-muted-foreground;
+  }
+
+  /* Legal document styles */
+  .legal-document {
+    @apply rounded-lg border bg-card p-6 font-serif shadow-sm;
+  }
+
+  .legal-document h1 {
+    @apply mb-4 text-center text-xl font-bold uppercase;
+  }
+
+  .legal-document p {
+    @apply mb-3 text-justify leading-relaxed;
+  }
+
+  .legal-document .signature-block {
+    @apply mt-8 border-t pt-4;
+  }
+
+  /* Status badges */
+  .status-badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .status-badge-success {
+    @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200;
+  }
+
+  .status-badge-warning {
+    @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200;
+  }
+
+  .status-badge-error {
+    @apply bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200;
+  }
+
+  .status-badge-info {
+    @apply bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200;
+  }
+
+  /* Card hover effects */
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
+  }
+
+  /* AI Disclaimer styles */
+  .ai-disclaimer {
+    @apply rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200;
+  }
+
+  /* Progress indicator */
+  .progress-step {
+    @apply flex flex-col items-center;
+  }
+
+  .progress-step-circle {
+    @apply flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium;
+  }
+
+  .progress-step-line {
+    @apply h-1 flex-1;
+  }
+
+  /* Glassmorphism effect for hero sections */
+  .glass {
+    @apply bg-white/80 backdrop-blur-lg dark:bg-gray-900/80;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent;
+  }
+
+  /* Lithuania flag gradient */
+  .lithuania-gradient {
+    background: linear-gradient(
+      180deg,
+      #fdb913 0%,
+      #fdb913 33%,
+      #006a44 33%,
+      #006a44 66%,
+      #c1272d 66%,
+      #c1272d 100%
+    );
+  }
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+/* Print styles for legal documents */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .legal-document {
+    box-shadow: none;
+    border: none;
+  }
+
+  body {
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-muted-foreground/30;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/50;
+}
